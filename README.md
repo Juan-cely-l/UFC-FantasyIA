@@ -2,7 +2,7 @@
 
 > **Fight camp en construcción** · Fantasy league de UFC con backend en Spring Boot y PostgreSQL.
 
-UFC-FantasyIA es una plataforma en desarrollo donde los usuarios podrán construir equipos de peleadores respetando un presupuesto tipo *salary cap* y seguir su rendimiento. En esta etapa inicial, el proyecto cuenta con la base del backend, la conexión a PostgreSQL y un endpoint de salud para verificar que la API está disponible.
+UFC-FantasyIA es una plataforma en desarrollo donde los usuarios podrán construir equipos de peleadores respetando un presupuesto tipo *salary cap* y seguir su rendimiento. En esta etapa inicial, el proyecto cuenta con la base del backend, la conexión a PostgreSQL, el modelo de dominio, las migraciones de base de datos y un endpoint de salud para verificar que la API está disponible.
 
 <div align="center">
 
@@ -18,6 +18,9 @@ UFC-FantasyIA es una plataforma en desarrollo donde los usuarios podrán constru
 | PostgreSQL | Configurado con Compose |
 | Persistencia | Spring Data JPA |
 | Migraciones | Flyway habilitado |
+| Modelo de dominio | Entidades JPA implementadas |
+| Repositorios | Repositorios Spring Data creados |
+| Pruebas de persistencia | Test de `FighterRepository` en verde |
 | Endpoint de salud | Disponible |
 | Funcionalidad fantasy | En construcción |
 
@@ -27,6 +30,7 @@ UFC-FantasyIA es una plataforma en desarrollo donde los usuarios podrán constru
 - Spring Boot 4.1.1
 - Spring Web MVC
 - Spring Data JPA
+- Lombok
 - PostgreSQL 16
 - Flyway
 - Maven
@@ -138,6 +142,63 @@ La aplicación utiliza esta conexión local:
 jdbc:postgresql://localhost:5432/ufc_fantasy
 ```
 
+Al iniciar la aplicación, Flyway valida y ejecuta automáticamente las migraciones ubicadas en `src/main/resources/db/migration`.
+
+La migración inicial `V1__init_schema.sql` crea las tablas:
+
+- `events`
+- `fighters`
+- `weight_divisions`
+- `fighter_weight_divisions`
+- `fights`
+
+Para comprobar el estado de las migraciones directamente en PostgreSQL:
+
+```bash
+docker compose exec postgres psql -U ufc_user -d ufc_fantasy -c "SELECT installed_rank, version, description, success FROM flyway_schema_history ORDER BY installed_rank;"
+```
+
+La salida debe mostrar la migración `1 - init schema` con `success` igual a `t`.
+
+> Si la migración inicial ya se ejecutó antes de un cambio estructural durante el desarrollo, puedes recrear la base local con `docker compose down -v` y después `docker compose up -d`. Esto elimina únicamente los datos del entorno local.
+
+## Modelo de dominio
+
+El modelo utiliza nombres en inglés para mantener consistencia entre el código Java y el esquema SQL:
+
+| Entidad | Responsabilidad |
+| --- | --- |
+| `Event` | Evento que contiene una o varias peleas |
+| `Fight` | Pelea entre dos peleadores dentro de un evento y una división |
+| `Fighter` | Peleador con sus datos físicos y país |
+| `WeightDivision` | División de peso disponible |
+| `FighterWeightDivision` | Relación entre un peleador y una división de peso |
+
+`FighterWeightDivision` es una entidad intermedia explícita porque la relación utiliza una clave primaria compuesta por `fighter_id` y `weight_division_id`. Su identificador se representa con `@EmbeddedId` y las relaciones se enlazan mediante `@MapsId`.
+
+## Repositorios
+
+Se implementaron repositorios Spring Data JPA para las entidades principales y la relación intermedia:
+
+- `EventRepository`
+- `FightRepository`
+- `FighterRepository`
+- `WeightDivisionRepository`
+- `FighterWeightDivisionRepository`
+
+Todos utilizan `UUID` como tipo de identificador. El repositorio de `FighterWeightDivision` utiliza `FighterWeightDivisionId` como clave primaria.
+
+## Pruebas
+
+Para ejecutar el test de persistencia de `Fighter`, PostgreSQL debe estar iniciado y las variables de entorno deben estar disponibles:
+
+```bash
+docker compose up -d
+mvn -Dtest=FighterRepositoryTest test
+```
+
+El test guarda un `Fighter`, confirma que se genera su `UUID`, lo recupera mediante `FighterRepository` y valida sus campos principales.
+
 ## Endpoint de salud
 
 Cuando la aplicación esté ejecutándose, consulta:
@@ -164,11 +225,29 @@ UFC-FantasyIA/
 │   │   ├── java/com/ufc/UFC_FantasyIA/
 │   │   │   ├── controller/
 │   │   │   │   └── HealthController.java
+│   │   │   ├── entity/
+│   │   │   │   ├── Event.java
+│   │   │   │   ├── Fight.java
+│   │   │   │   ├── Fighter.java
+│   │   │   │   ├── FighterWeightDivision.java
+│   │   │   │   ├── FighterWeightDivisionId.java
+│   │   │   │   └── WeightDivision.java
+│   │   │   ├── repository/
+│   │   │   │   ├── EventRepository.java
+│   │   │   │   ├── FightRepository.java
+│   │   │   │   ├── FighterRepository.java
+│   │   │   │   ├── FighterWeightDivisionRepository.java
+│   │   │   │   └── WeightDivisionRepository.java
 │   │   │   └── UfcFantasyIaApplication.java
 │   │   └── resources/
+│   │       ├── db/migration/
+│   │       │   └── V1__init_schema.sql
 │   │       └── application.properties
-│   └── test/
+│   └── test/java/com/ufc/UFC_FantasyIA/
+│       ├── UfcFantasyIaApplicationTests.java
+│       └── repository/FighterRepositoryTest.java
 ├── docker-compose.yml
+├── .env.example
 ├── pom.xml
 └── README.md
 ```
@@ -176,3 +255,4 @@ UFC-FantasyIA/
 ## Desarrollo
 
 El proyecto se encuentra en construcción. Por ahora, el objetivo es consolidar la base del backend y del entorno local antes de incorporar el resto de la experiencia fantasy.
+![Peleas Boxing Event Data Model-2026-10-14-160441.png](Assets/Peleas%20Boxing%20Event%20Data%20Model-2026-10-14-160441.png)
