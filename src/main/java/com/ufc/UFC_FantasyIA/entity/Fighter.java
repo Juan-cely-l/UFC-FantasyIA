@@ -32,6 +32,9 @@ public class Fighter {
     @Column(name = "reach_cm")
     private Integer reachCm;
 
+    @Column(name = "age")
+    private Integer age;
+
     @Column(name = "country", length = 100)
     private String country;
 
