@@ -19,8 +19,10 @@ UFC-FantasyIA es una plataforma en desarrollo donde los usuarios podrán constru
 | Persistencia | Spring Data JPA |
 | Migraciones | Flyway habilitado |
 | Modelo de dominio | Entidades JPA implementadas |
-| Repositorios | Repositorios Spring Data creados |
-| Pruebas de persistencia | Test de `FighterRepository` en verde |
+| DTOs | DTOs de entrada y salida para eventos y peleadores |
+| Servicios | Servicios de `Event` y `Fighter` implementados |
+| Repositorios | Repositorios Spring Data con paginación |
+| Pruebas | Tests de servicio y persistencia |
 | Endpoint de salud | Disponible |
 | Funcionalidad fantasy | En construcción |
 
@@ -144,7 +146,12 @@ jdbc:postgresql://localhost:5432/ufc_fantasy
 
 Al iniciar la aplicación, Flyway valida y ejecuta automáticamente las migraciones ubicadas en `src/main/resources/db/migration`.
 
-La migración inicial `V1__init_schema.sql` crea las tablas:
+Las migraciones actuales son:
+
+- `V1__init_schema.sql`: crea el esquema inicial y sus cinco tablas.
+- `V2__add_age_to_fighters.sql`: agrega el campo `age` a `fighters`.
+
+La migración inicial crea las tablas:
 
 - `events`
 - `fighters`
@@ -158,7 +165,7 @@ Para comprobar el estado de las migraciones directamente en PostgreSQL:
 docker compose exec postgres psql -U ufc_user -d ufc_fantasy -c "SELECT installed_rank, version, description, success FROM flyway_schema_history ORDER BY installed_rank;"
 ```
 
-La salida debe mostrar la migración `1 - init schema` con `success` igual a `t`.
+La salida debe mostrar las migraciones aplicadas con `success` igual a `t`.
 
 > Si la migración inicial ya se ejecutó antes de un cambio estructural durante el desarrollo, puedes recrear la base local con `docker compose down -v` y después `docker compose up -d`. Esto elimina únicamente los datos del entorno local.
 
@@ -188,16 +195,66 @@ Se implementaron repositorios Spring Data JPA para las entidades principales y l
 
 Todos utilizan `UUID` como tipo de identificador. El repositorio de `FighterWeightDivision` utiliza `FighterWeightDivisionId` como clave primaria.
 
+Los repositorios de `Event` y `Fighter` también exponen consultas tipadas por nombre y operaciones para comprobar nombres duplicados. Todos los repositorios heredan las operaciones de paginación de `JpaRepository`.
+
+## DTOs
+
+La aplicación separa los objetos de transporte de las entidades JPA:
+
+| DTO | Uso |
+| --- | --- |
+| `EventRequestDto` | Datos validados para crear o actualizar un evento |
+| `EventResponseDto` | Datos públicos de un evento |
+| `FighterRequestDto` | Datos validados para crear o actualizar un peleador |
+| `FighterResponseDto` | Datos públicos de un peleador |
+
+Los DTOs de entrada utilizan Jakarta Validation. Las relaciones JPA no se exponen directamente; cuando se implementen los DTOs de peleas, las relaciones se representarán mediante identificadores.
+
+## Servicios
+
+`EventService` y `FighterService` definen el contrato de la capa de aplicación. Sus implementaciones están registradas como beans de Spring mediante `@Service`.
+
+Cada servicio incluye operaciones para:
+
+- Crear.
+- Actualizar.
+- Consultar por `UUID`.
+- Consultar una lista paginada mediante `Pageable`.
+- Eliminar.
+
+Las implementaciones utilizan `@Transactional`, transforman entidades en DTOs de respuesta y lanzan excepciones específicas cuando un recurso no existe o ya está registrado.
+
+> La anotación `@Service` debe estar en la implementación concreta (`EventServiceImpl` o `FighterServiceImpl`), no en la interfaz. La interfaz define el contrato; la implementación es el componente que Spring instancia y administra.
+
+## Excepciones de dominio
+
+La capa de servicios utiliza excepciones específicas:
+
+- `EventNotFoundException`
+- `FighterNotFoundException`
+- `ResourceAlreadyExistsException`
+
+La gestión HTTP global de estas excepciones se incorporará junto con los controladores de eventos y peleadores.
+
 ## Pruebas
 
-Para ejecutar el test de persistencia de `Fighter`, PostgreSQL debe estar iniciado y las variables de entorno deben estar disponibles:
+Para ejecutar la suite completa, PostgreSQL debe estar iniciado y las variables de entorno deben estar disponibles:
 
 ```bash
 docker compose up -d
-mvn -Dtest=FighterRepositoryTest test
+mvn test
 ```
 
-El test guarda un `Fighter`, confirma que se genera su `UUID`, lo recupera mediante `FighterRepository` y valida sus campos principales.
+El proyecto incluye actualmente:
+
+- `FighterRepositoryTest`: guarda y recupera un `Fighter` usando PostgreSQL y JPA.
+- `FighterServiceImplTest`: verifica el registro del servicio en Spring y la creación correcta de un peleador a partir de su DTO.
+
+Para ejecutar únicamente el test unitario del servicio:
+
+```bash
+mvn -Dtest=FighterServiceImplTest test
+```
 
 ## Endpoint de salud
 
@@ -225,6 +282,11 @@ UFC-FantasyIA/
 │   │   ├── java/com/ufc/UFC_FantasyIA/
 │   │   │   ├── controller/
 │   │   │   │   └── HealthController.java
+│   │   │   ├── dto/
+│   │   │   │   ├── EventRequestDto.java
+│   │   │   │   ├── EventResponseDto.java
+│   │   │   │   ├── FighterRequestDto.java
+│   │   │   │   └── FighterResponseDto.java
 │   │   │   ├── entity/
 │   │   │   │   ├── Event.java
 │   │   │   │   ├── Fight.java
@@ -238,14 +300,25 @@ UFC-FantasyIA/
 │   │   │   │   ├── FighterRepository.java
 │   │   │   │   ├── FighterWeightDivisionRepository.java
 │   │   │   │   └── WeightDivisionRepository.java
+│   │   │   ├── exception/
+│   │   │   │   ├── EventNotFoundException.java
+│   │   │   │   ├── FighterNotFoundException.java
+│   │   │   │   └── ResourceAlreadyExistsException.java
+│   │   │   ├── service/
+│   │   │   │   ├── EventService.java
+│   │   │   │   ├── EventServiceImpl.java
+│   │   │   │   ├── FighterService.java
+│   │   │   │   └── FighterServiceImpl.java
 │   │   │   └── UfcFantasyIaApplication.java
 │   │   └── resources/
 │   │       ├── db/migration/
-│   │       │   └── V1__init_schema.sql
+│   │       │   ├── V1__init_schema.sql
+│   │       │   └── V2__add_age_to_fighters.sql
 │   │       └── application.properties
 │   └── test/java/com/ufc/UFC_FantasyIA/
 │       ├── UfcFantasyIaApplicationTests.java
-│       └── repository/FighterRepositoryTest.java
+│       ├── repository/FighterRepositoryTest.java
+│       └── service/FighterServiceImplTest.java
 ├── docker-compose.yml
 ├── .env.example
 ├── pom.xml
