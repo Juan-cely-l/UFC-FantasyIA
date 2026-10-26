@@ -21,8 +21,10 @@ UFC-FantasyIA es una plataforma en desarrollo donde los usuarios podrán constru
 | Modelo de dominio | Entidades JPA implementadas |
 | DTOs | DTOs de entrada y salida para eventos y peleadores |
 | Servicios | Servicios de `Event` y `Fighter` implementados |
+| API REST | Controladores de eventos, peleadores y salud |
 | Repositorios | Repositorios Spring Data con paginación |
-| Pruebas | Tests de servicio y persistencia |
+| Manejo de errores | Respuestas REST con `ProblemDetail` |
+| Pruebas | Tests de controlador, servicio y persistencia |
 | Endpoint de salud | Disponible |
 | Funcionalidad fantasy | En construcción |
 
@@ -234,7 +236,39 @@ La capa de servicios utiliza excepciones específicas:
 - `FighterNotFoundException`
 - `ResourceAlreadyExistsException`
 
-La gestión HTTP global de estas excepciones se incorporará junto con los controladores de eventos y peleadores.
+`GlobalExceptionHandler` transforma estas excepciones en respuestas HTTP estandarizadas mediante `ProblemDetail`:
+
+| Situación | Estado HTTP |
+| --- | --- |
+| Recurso inexistente | `404 Not Found` |
+| Recurso duplicado | `409 Conflict` |
+| Error de validación | `400 Bad Request` |
+
+## API REST
+
+Los controladores utilizan una estructura versionada bajo `/api/v1`:
+
+| Método | Endpoint | Descripción |
+| --- | --- | --- |
+| `GET` | `/api/v1/health` | Comprueba el estado de la API |
+| `GET` | `/api/v1/events` | Lista eventos con paginación |
+| `GET` | `/api/v1/events/{id}` | Consulta un evento por UUID |
+| `POST` | `/api/v1/events` | Crea un evento |
+| `PUT` | `/api/v1/events/{id}` | Reemplaza los datos de un evento |
+| `DELETE` | `/api/v1/events/{id}` | Elimina un evento |
+| `GET` | `/api/v1/fighters` | Lista peleadores con paginación |
+| `GET` | `/api/v1/fighters/{id}` | Consulta un peleador por UUID |
+| `POST` | `/api/v1/fighters` | Crea un peleador |
+| `PUT` | `/api/v1/fighters/{id}` | Reemplaza los datos de un peleador |
+| `DELETE` | `/api/v1/fighters/{id}` | Elimina un peleador |
+
+Las listas aceptan los parámetros estándar de Spring Data:
+
+```text
+GET /api/v1/fighters?page=0&size=20&sort=name,asc
+```
+
+Los requests de creación y actualización se validan con `@Valid`. Las respuestas exitosas utilizan `201 Created` al crear recursos, `200 OK` para consultas y actualizaciones, y `204 No Content` al eliminar.
 
 ## Pruebas
 
@@ -249,6 +283,7 @@ El proyecto incluye actualmente:
 
 - `FighterRepositoryTest`: guarda y recupera un `Fighter` usando PostgreSQL y JPA.
 - `FighterServiceImplTest`: verifica el registro del servicio en Spring y la creación correcta de un peleador a partir de su DTO.
+- `FighterControllerTest`: verifica la ruta REST `/api/v1/fighters` y la respuesta paginada.
 
 Para ejecutar únicamente el test unitario del servicio:
 
@@ -280,7 +315,12 @@ UFC-FantasyIA/
 ├── src/
 │   ├── main/
 │   │   ├── java/com/ufc/UFC_FantasyIA/
+│   │   │   ├── config/
+│   │   │   │   └── WebConfig.java
 │   │   │   ├── controller/
+│   │   │   │   ├── EventController.java
+│   │   │   │   ├── FighterController.java
+│   │   │   │   ├── GlobalExceptionHandler.java
 │   │   │   │   └── HealthController.java
 │   │   │   ├── dto/
 │   │   │   │   ├── EventRequestDto.java
@@ -317,6 +357,7 @@ UFC-FantasyIA/
 │   │       └── application.properties
 │   └── test/java/com/ufc/UFC_FantasyIA/
 │       ├── UfcFantasyIaApplicationTests.java
+│       ├── controller/FighterControllerTest.java
 │       ├── repository/FighterRepositoryTest.java
 │       └── service/FighterServiceImplTest.java
 ├── docker-compose.yml
